@@ -3,7 +3,7 @@ import { Sparkles, Code2, Copy, CheckCircle, ArrowRight, Briefcase, Building2, L
 import './App.css';
 
 function App() {
-  const [latexCode, setLatexCode] = useState('');
+  const [latexCode, setLatexCode] = useState(() => localStorage.getItem('cached_master_resume') || '');
   const [jobDescription, setJobDescription] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -198,7 +198,10 @@ function App() {
                   id="latexCode"
                   placeholder="Paste your raw \documentclass... LaTeX code here"
                   value={latexCode}
-                  onChange={(e) => setLatexCode(e.target.value)}
+                  onChange={(e) => {
+                    setLatexCode(e.target.value);
+                    localStorage.setItem('cached_master_resume', e.target.value);
+                  }}
                   style={{ paddingLeft: '2.5rem', minHeight: '200px', fontFamily: 'monospace' }}
                 ></textarea>
               </div>
