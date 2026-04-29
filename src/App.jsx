@@ -81,8 +81,15 @@ ${latexCode}`
       const data = await response.json();
       let tailoredLatex = data.choices[0].message.content;
 
-      // Strip markdown code blocks if the AI accidentally included them
-      tailoredLatex = tailoredLatex.replace(/```latex\s*/gi, '').replace(/```\s*/g, '');
+      // Extract only LaTeX portion robustly to avoid conversational noise
+      const docStart = tailoredLatex.indexOf('\\documentclass');
+      const docEnd = tailoredLatex.lastIndexOf('\\end{document}');
+      
+      if (docStart !== -1 && docEnd !== -1) {
+        tailoredLatex = tailoredLatex.substring(docStart, docEnd + 14);
+      } else {
+        tailoredLatex = tailoredLatex.replace(/```latex\s*/gi, '').replace(/```\s*/g, '').trim();
+      }
 
       setGeneratedLatex(tailoredLatex);
       setIsProcessing(false);
