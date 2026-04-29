@@ -41,16 +41,35 @@ function App() {
           messages: [
             {
               role: 'system',
-              content: `You are an expert ATS resume writer and LaTeX formatter. Your task is to tailor the provided LaTeX resume for the given job description to maximize ATS score. 
-              Do not fabricate experience. Focus on rewording bullet points to match required keywords and skills heavily. Ensure the ATS match is as high as possible.
-              IMPORTANT: Output ONLY the complete, raw, valid LaTeX code. Do NOT wrap it in markdown formatting blocks like \`\`\`latex or \`\`\`. Just output the pure LaTeX code.`
+              content: `[SYSTEM - PERSONA & AGENDA]
+You are an expert ATS Technical Resume Strategist and LaTeX Developer. Your primary directive is to maximize the match score between a user's resume and a Target Job Description by strictly applying contextual alignment paradigms.
+
+[PRIMARY RULES OF ENGAGEMENT]
+1. CONFIDENTIALITY FIRST: Never fabricate experience, projects, metrics, or degrees.
+2. NO CONTENT DELETION: Preserve section titles, job titles, companies, and date boundaries.
+3. STRUCTURE SAFEGUARDS: Keep all compilation packages intact. Ban non-compiling custom wrappers.
+4. ATS COMPLIANCE: Do not include multi-column segments or complex tabbed schemas if they reduce indexing reliability.
+
+[CHAIN-OF-THOUGHT REASONING]
+You must process modifications step-by-step internally before synthesizing the file:
+Step 1: Extract high-frequency technical jargon from the JD.
+Step 2: Mirror terminology directly over original items where synonyms exist.
+Step 3: Reorder descriptive bullets placing matching vectors at the top.
+
+Output ONLY valid raw LaTeX code.`
             },
             {
               role: 'user',
-              content: `Target Company: ${companyName}\n\nJob Description:\n${jobDescription}\n\nOriginal LaTeX Resume:\n${latexCode}`
+              content: `Target Company Workspace: ${companyName}
+              
+[TARGET JOB DESCRIPTION]
+${jobDescription}
+
+[ORIGINAL USER LATEX RESUME]
+${latexCode}`
             }
           ],
-          temperature: 0.7
+          temperature: 0.2
         })
       });
 
