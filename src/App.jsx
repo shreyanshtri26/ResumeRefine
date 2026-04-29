@@ -1,111 +1,53 @@
-import React, { useState, useRef } from 'react';
-import { Sparkles, FileText, UploadCloud, X, CheckCircle, ArrowRight, Briefcase, Building2, Loader2, Download, AlertTriangle } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import html2pdf from 'html2pdf.js';
+import React, { useState } from 'react';
+import { Sparkles, Code2, Copy, CheckCircle, ArrowRight, Briefcase, Building2, Loader2, Download, AlertTriangle } from 'lucide-react';
 import './App.css';
 
-// Initialize PDF.js worker using local file to avoid CDN import errors
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
 function App() {
-  const [file, setFile] = useState(null);
+  const [latexCode, setLatexCode] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [generatedHTML, setGeneratedHTML] = useState('');
+  const [generatedLatex, setGeneratedLatex] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const fileInputRef = useRef(null);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(droppedFile);
-      } else {
-        alert('Please upload a PDF file.');
-      }
-    }
-  };
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
-
-  const removeFile = (e) => {
-    e.preventDefault();
-    setFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const extractTextFromPDF = async (pdfFile) => {
-    const arrayBuffer = await pdfFile.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let text = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const strings = content.items.map(item => item.str);
-      text += strings.join(' ') + '\n';
-    }
-    return text;
-  };
+  const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState('preview'); // Default to preview
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [isCompilingPdf, setIsCompilingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!file || !jobDescription || !companyName) {
-      alert('Please fill out all fields and upload your resume.');
+    if (!latexCode || !jobDescription || !companyName) {
+      alert('Please fill out all fields and paste your LaTeX resume.');
       return;
     }
 
     setIsProcessing(true);
+    setGeneratedLatex('');
 
     try {
-      // 1. Extract text from PDF
-      const resumeText = await extractTextFromPDF(file);
-
-      // 2. Call OpenAI API
-      const response = await fetch('/api/openai/v1/chat/completions', {
+      const response = await fetch('/api/openrouter/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_OPENAI_API_KEY}`,
+          'HTTP-Referer': 'http://localhost:5173',
+          'X-Title': 'ResumeRefiner',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'anthropic/claude-3-haiku',
           messages: [
             {
               role: 'system',
-              content: `Act as a professional resume writer. Your task is to tailor the provided resume for a specific job description. 
-              Do not fabricate experience. Focus on rewording existing bullet points to better align with the job's required keywords and skills. 
-              IMPORTANT: YOU MUST RETURN THE OUTPUT AS A VALID HTML DOCUMENT. 
-              NEVER output LaTeX. NEVER output Markdown. Do NOT use \`\`\`html tags. 
-              Use clean typography, h1 for names, h2 for sections, and ul/li for bullet points. Output ONLY the raw HTML code.`
+              content: `You are an expert ATS resume writer and LaTeX formatter. Your task is to tailor the provided LaTeX resume for the given job description to maximize ATS score. 
+              Do not fabricate experience. Focus on rewording bullet points to match required keywords and skills heavily. Ensure the ATS match is as high as possible.
+              IMPORTANT: Output ONLY the complete, raw, valid LaTeX code. Do NOT wrap it in markdown formatting blocks like \`\`\`latex or \`\`\`. Just output the pure LaTeX code.`
             },
             {
               role: 'user',
-              content: `Target Company: ${companyName}\n\nJob Description:\n${jobDescription}\n\nOriginal Resume:\n${resumeText}`
+              content: `Target Company: ${companyName}\n\nJob Description:\n${jobDescription}\n\nOriginal LaTeX Resume:\n${latexCode}`
             }
           ],
           temperature: 0.7
@@ -118,14 +60,16 @@ function App() {
       }
 
       const data = await response.json();
-      let tailoredHTML = data.choices[0].message.content;
+      let tailoredLatex = data.choices[0].message.content;
 
-      // Strip markdown code blocks if the AI included them
-      tailoredHTML = tailoredHTML.replace(/```html\s*/gi, '').replace(/```\s*/g, '');
+      // Strip markdown code blocks if the AI accidentally included them
+      tailoredLatex = tailoredLatex.replace(/```latex\s*/gi, '').replace(/```\s*/g, '');
 
-      setGeneratedHTML(tailoredHTML);
+      setGeneratedLatex(tailoredLatex);
       setIsProcessing(false);
-      setIsSuccess(true);
+      
+      // Auto-compile PDF
+      compilePdf(tailoredLatex);
 
     } catch (err) {
       console.error(err);
@@ -134,53 +78,89 @@ function App() {
     }
   };
 
-  const downloadPDF = () => {
+  const compilePdf = async (latexString) => {
+    setIsCompilingPdf(true);
+    setPdfError('');
+    setPdfUrl('');
+    
     try {
-      const element = document.createElement('div');
-      element.innerHTML = generatedHTML;
+      const formData = new FormData();
+      formData.append('filecontents[]', latexString);
+      formData.append('filename[]', 'document.tex');
+      formData.append('engine', 'pdflatex');
+      formData.append('return', 'pdf');
 
-      // Inject some basic styling into the generated PDF
-      element.style.padding = '40px';
-      element.style.fontFamily = 'Helvetica, Arial, sans-serif';
-      element.style.color = '#333';
-      element.style.lineHeight = '1.6';
-      element.style.fontSize = '14px';
-      element.style.background = 'white'; // Ensure background is white
-
-      // Temporarily append to DOM to ensure layout is computed correctly for html2canvas
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '-9999px';
-      document.body.appendChild(element);
-
-      const opt = {
-        margin: 0.5,
-        filename: `${companyName.replace(/[^a-z0-9]/gi, '_')}_Resume.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-      };
-
-      html2pdf().set(opt).from(element).save().then(() => {
-        document.body.removeChild(element);
-      }).catch(err => {
-        console.error('PDF Generation Error:', err);
-        alert('Failed to generate PDF. Check console for details.');
-        document.body.removeChild(element);
+      const response = await fetch('/api/texlive/cgi-bin/latexcgi', {
+        method: 'POST',
+        body: formData
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to compile PDF');
+      }
+      
+      const blob = await response.blob();
+      
+      if (blob.type !== 'application/pdf') {
+        throw new Error("Compilation failed. Please use Overleaf to compile your exact template.");
+      }
+
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
     } catch (err) {
-      console.error('PDF Generation Sync Error:', err);
-      alert('Error: ' + err.message);
+      console.error(err);
+      setPdfError('Failed to generate PDF preview.');
+    } finally {
+      setIsCompilingPdf(false);
     }
   };
 
-  const resetForm = () => {
-    setFile(null);
-    setJobDescription('');
-    setCompanyName('');
-    setIsSuccess(false);
-    setGeneratedHTML('');
-    setErrorMsg('');
+  const downloadTex = () => {
+    const blob = new Blob([generatedLatex], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `shreyansh_${companyName.replace(/[^a-z0-9]/gi, '_')}.tex`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPdf = () => {
+    if (!pdfUrl) {
+      alert("Please wait for the PDF to finish compiling!");
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = `shreyansh_${companyName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const openInOverleaf = () => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://www.overleaf.com/docs';
+    form.target = '_blank';
+    
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'snip';
+    input.value = generatedLatex;
+    
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(generatedLatex);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -191,15 +171,15 @@ function App() {
           <h1>ResumeRefine</h1>
         </div>
         <p className="subtitle">
-          Supercharge your job search. Our AI analyzes your master resume and the job description to generate a perfectly tailored PDF in seconds.
+          Supercharge your job search. Paste your LaTeX resume and the job description, and our AI will generate a highly tailored, ATS-friendly LaTeX file.
         </p>
       </header>
 
       <main className="main-content">
         <div className="glass-card left-panel">
           <h2 className="section-title">
-            <FileText size={24} />
-            Tailor Your Application
+            <Code2 size={24} />
+            Input Details
           </h2>
 
           {errorMsg && (
@@ -211,40 +191,17 @@ function App() {
 
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label>1. Upload Master Resume (PDF)</label>
-
-              {!file ? (
-                <div
-                  className={`file-upload-area ${isDragging ? 'dragover' : ''}`}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                >
-                  <input
-                    type="file"
-                    className="file-input"
-                    accept=".pdf"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                  />
-                  <div className="file-upload-content">
-                    <UploadCloud className="upload-icon" />
-                    <p><strong>Click to upload</strong> or drag and drop</p>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>PDF up to 5MB</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="selected-file">
-                  <FileText className="text-primary" />
-                  <span className="file-name">{file.name}</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {(file.size / 1024 / 1024).toFixed(2)} MB
-                  </span>
-                  <button className="remove-file" onClick={removeFile} title="Remove file">
-                    <X size={18} />
-                  </button>
-                </div>
-              )}
+              <label htmlFor="latexCode">1. Paste Master Resume (LaTeX Code)</label>
+              <div style={{ position: 'relative' }}>
+                <Code2 size={18} style={{ position: 'absolute', top: '1rem', left: '1rem', color: 'var(--text-muted)' }} />
+                <textarea
+                  id="latexCode"
+                  placeholder="Paste your raw \documentclass... LaTeX code here"
+                  value={latexCode}
+                  onChange={(e) => setLatexCode(e.target.value)}
+                  style={{ paddingLeft: '2.5rem', minHeight: '200px', fontFamily: 'monospace' }}
+                ></textarea>
+              </div>
             </div>
 
             <div className="form-group">
@@ -279,16 +236,16 @@ function App() {
             <button
               type="submit"
               className="action-button"
-              disabled={isProcessing || !file || !jobDescription || !companyName}
+              disabled={isProcessing || !latexCode || !jobDescription || !companyName}
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="loading-spinner" />
-                  AI is Tailoring...
+                  Optimizing for ATS...
                 </>
               ) : (
                 <>
-                  Generate Tailored Resume
+                  Tailor LaTeX Resume
                   <ArrowRight size={20} />
                 </>
               )}
@@ -296,69 +253,101 @@ function App() {
           </form>
         </div>
 
-        <div className="glass-card right-panel">
-          <h2 className="section-title">
-            <Sparkles size={24} />
-            How it Works
-          </h2>
+        <div className="glass-card right-panel" style={{ display: 'flex', flexDirection: 'column' }}>
+          {!generatedLatex ? (
+            <>
+              <h2 className="section-title">
+                <Sparkles size={24} />
+                How it Works
+              </h2>
 
-          <div className="steps-container">
-            <div className="step">
-              <div className="step-number">1</div>
-              <div className="step-content">
-                <h3>Data Extraction</h3>
-                <p>We read your master PDF resume locally in your browser and extract your core experience, education, and skills.</p>
+              <div className="steps-container">
+                <div className="step">
+                  <div className="step-number">1</div>
+                  <div className="step-content">
+                    <h3>Provide LaTeX</h3>
+                    <p>Paste your existing, ATS-friendly LaTeX resume code directly into the input field.</p>
+                  </div>
+                </div>
+
+                <div className="step">
+                  <div className="step-number">2</div>
+                  <div className="step-content">
+                    <h3>AI Keyword Optimization</h3>
+                    <p>Our advanced LLM analyzes the job description and rewrites your bullet points to match the required skills, maximizing your ATS score.</p>
+                  </div>
+                </div>
+
+                <div className="step">
+                  <div className="step-number">3</div>
+                  <div className="step-content">
+                    <h3>Generate .tex</h3>
+                    <p>Get the fully updated, strictly-formatted LaTeX code back. You can copy it instantly or download it as a .tex file to compile in Overleaf or any LaTeX editor.</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <h2 className="section-title" style={{ marginBottom: 0 }}>
+                  <CheckCircle size={24} color="#10b981" />
+                  Success! Tailored LaTeX
+                </h2>
 
-            <div className="step">
-              <div className="step-number">2</div>
-              <div className="step-content">
-                <h3>AI Keyword Optimization</h3>
-                <p>Our advanced LLM analyzes the job description and subtly rewrites your bullet points to match the required skills and tone.</p>
+                <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
+                  <button onClick={() => setActiveTab('code')} style={{ padding: '0.5rem 1rem', background: activeTab === 'code' ? 'var(--primary)' : 'transparent', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.9rem', transition: 'all 0.2s' }}>
+                    Code
+                  </button>
+                  <button onClick={() => setActiveTab('preview')} style={{ padding: '0.5rem 1rem', background: activeTab === 'preview' ? 'var(--primary)' : 'transparent', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.9rem', transition: 'all 0.2s' }}>
+                    Live Preview
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <button onClick={copyToClipboard} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
+                    {copied ? 'Copied!' : 'Copy Code'}
+                  </button>
+                  <button onClick={downloadTex} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Code2 size={16} />
+                    .tex
+                  </button>
+                  <button onClick={openInOverleaf} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#47a141', borderColor: '#47a141', color: 'white' }}>
+                    <Code2 size={16} />
+                    Overleaf
+                  </button>
+                  <button onClick={downloadPdf} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', borderColor: 'var(--primary)', color: 'white' }}>
+                    <Download size={16} />
+                    Download PDF
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="step">
-              <div className="step-number">3</div>
-              <div className="step-content">
-                <h3>PDF Generation</h3>
-                <p>The tailored content is injected into a premium HTML template and converted back into a professional PDF ready for submission.</p>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: '3rem', padding: '1.5rem', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.1)' }}>
-            <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--primary)' }}>
-              <CheckCircle size={18} /> Privacy First
-            </h4>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-              Your data is never stored. Your resume is processed directly using OpenAI's API securely, and no data is saved on our servers.
-            </p>
-          </div>
+              
+              {activeTab === 'code' ? (
+                <textarea 
+                  readOnly
+                  value={generatedLatex}
+                  style={{ flex: 1, padding: '1.5rem', fontFamily: 'monospace', fontSize: '0.85rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'var(--text-main)', resize: 'none', minHeight: '400px', width: '100%' }}
+                />
+              ) : (
+                <div style={{ flex: 1, padding: '0', background: 'white', borderRadius: '12px', minHeight: '400px', width: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {isCompilingPdf ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#64748b' }}>
+                      <Loader2 className="loading-spinner" size={32} style={{ marginBottom: '1rem' }} />
+                      <p>Compiling PDF via TeX Live...</p>
+                    </div>
+                  ) : pdfError ? (
+                    <p style={{ color: 'red', padding: '2rem', textAlign: 'center' }}>{pdfError}</p>
+                  ) : pdfUrl ? (
+                    <iframe src={`${pdfUrl}#toolbar=0`} style={{ width: '100%', height: '100%', border: 'none', minHeight: '600px' }} title="PDF Preview" />
+                  ) : null}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
-
-      {isSuccess && (
-        <div className="success-overlay">
-          <div className="success-card">
-            <div className="success-icon-container">
-              <CheckCircle size={40} />
-            </div>
-            <h2>Success!</h2>
-            <p>Your tailored resume for <strong>{companyName}</strong> has been generated successfully. It's ready to land you that interview!</p>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button className="btn-secondary" onClick={resetForm}>
-                Tailor Another
-              </button>
-              <button className="action-button" onClick={downloadPDF} style={{ marginTop: 0, width: 'auto', padding: '1rem 1.5rem' }}>
-                <Download size={18} />
-                Download PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -6,10 +6,19 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api/openai': {
-        target: 'https://api.openai.com',
+      '/api/openrouter': {
+        target: 'https://openrouter.ai',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/openai/, ''),
+        rewrite: (path) => path.replace(/^\/api\/openrouter/, ''),
+      },
+      '/api/texlive': {
+        target: 'https://texlive.net',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/texlive/, ''),
+      },
+      '/latexcgi': {
+        target: 'https://texlive.net',
+        changeOrigin: true,
       },
     },
   },
